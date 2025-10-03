@@ -1,0 +1,151 @@
+Fs = 500; % Sampling frequency (Hz)
+t = 0:1/Fs:10; % Time vector for 10 seconds
+num_signals = 10; % Number of raw EEG signals to generate
+
+% Initialize a matrix to store the EEG signals
+raw_eeg_signals = zeros(num_signals, length(t));
+
+for i = 1:num_signals
+    % Vary the peak frequency and amplitude for each EEG band for each signal
+    delta_freq = 1 + rand * 3;    % Delta band peak frequency between 1-4 Hz
+    theta_freq = 4 + rand * 4;    % Theta band peak frequency between 4-8 Hz
+    alpha_freq = 8 + rand * 4;    % Alpha band peak frequency between 8-12 Hz
+    beta_freq  = 12 + rand * 18;  % Beta band peak frequency between 12-30 Hz
+    gamma_freq = 30 + rand * 70;  % Gamma band peak frequency between 30-100 Hz
+
+    % Vary the amplitude of each band
+    delta_amp = 2 + rand;     % Delta band amplitude between 2 and 3
+    theta_amp = 1.5 + rand;   % Theta band amplitude between 1.5 and 2.5
+    alpha_amp = 1 + rand;     % Alpha band amplitude between 1 and 2
+    beta_amp  = 0.5 + rand;   % Beta band amplitude between 0.5 and 1.5
+    gamma_amp = 0.2 + rand;   % Gamma band amplitude between 0.2 and 1.2
+
+    % Generate synthetic EEG signals for each band with the varying frequencies and amplitudes
+    delta = delta_amp * sin(2*pi*delta_freq*t);   % Delta band
+    theta = theta_amp * sin(2*pi*theta_freq*t);   % Theta band
+    alpha = alpha_amp * sin(2*pi*alpha_freq*t);   % Alpha band
+    beta  = beta_amp * sin(2*pi*beta_freq*t);     % Beta band
+    gamma = gamma_amp * sin(2*pi*gamma_freq*t);   % Gamma band
+
+    % Combine the signals to form the raw EEG-like signal
+    raw_eeg_signal = delta + theta + alpha + beta + gamma;
+    
+    % Add random noise to simulate real EEG signal
+    noise = 0.5 * randn(size(t)); % Gaussian noise
+    raw_eeg_signal = raw_eeg_signal + noise;
+    
+    % Store the generated signal
+    raw_eeg_signals(i, :) = raw_eeg_signal;
+
+    % Plot the generated signal (optional)
+    figure;
+    plot(t, raw_eeg_signal);
+    xlabel('Time (seconds)');
+    ylabel('Amplitude');
+    title(['Raw EEG Signal ' num2str(i)]);
+    xlim([0 10]); % Show the first 10 seconds
+    grid on;
+end
+
+%% Define the band ranges for EEG bands
+band_ranges = {
+    'Delta', [0.5 4];   % Delta: 0.5 - 4 Hz
+    'Theta', [4 8];     % Theta: 4 - 8 Hz
+    'Alpha', [8 12];    % Alpha: 8 - 12 Hz
+    'Beta', [12 30];    % Beta: 12 - 30 Hz
+    'Gamma', [30 100]   % Gamma: 30 - 100 Hz
+};
+
+num_bands = size(band_ranges, 1); % Number of EEG bands
+
+%% Loop through each EEG signal to calculate features
+for i = 1:num_signals
+    % Detrend the individual EEG signal by subtracting the mean
+    detrended_signal = raw_eeg_signals(i, :) - mean(raw_eeg_signals(i, :));
+    
+    % Calculate the total power of the entire signal
+    total_power = bandpower(detrended_signal, Fs, [0.5 100]);
+    
+    for j = 1:num_bands
+        band_name = band_ranges{j, 1}; % Get the band name (Delta, Theta, etc.)
+        band_freq = band_ranges{j, 2}; % Get the frequency range for this band
+        
+        % Design bandpass filter for the current band
+        [b, a] = butter(4, band_freq / (Fs/2), 'bandpass'); % 4th order Butterworth filter
+        
+        % Apply bandpass filter to the detrended signal
+        filtered_signal = filtfilt(b, a, detrended_signal); % Zero-phase filtering
+        
+        % Calculate Peak Frequency using FFT
+        N = length(filtered_signal);
+        fft_signal = fft(filtered_signal);
+        P2 = abs(fft_signal / N);
+        P1 = P2(1:N/2+1);
+        P1(2:end-1) = 2*P1(2:end-1);
+        f = Fs*(0:(N/2))/N; % Frequency vector
+        
+        % Limit the frequency vector to the current band range
+        valid_idx = find(f >= band_freq(1) & f <= band_freq(2));
+        [~, max_idx] = max(P1(valid_idx)); % Find the index of max power in the current band
+        peak_frequency = f(valid_idx(max_idx)); % Get the corresponding frequency
+        
+        % Calculate Band Power
+        band_power = bandpower(filtered_signal, Fs, band_freq);
+        
+        % Calculate Relative Power (Band Power / Total Power)
+        relative_power = band_power / total_power;
+        
+        % Calculate Mean of the filtered signal
+        mean_amplitude = mean(filtered_signal);
+        
+        % Display results
+        fprintf('Signal %d, %s Band:\n', i, band_name);
+        fprintf('  Peak Frequency: %.2f Hz\n', peak_frequency);
+        fprintf('  Band Power: %.4f\n', band_power);
+        fprintf('  Mean Amplitude: %.4f\n', mean_amplitude);
+        fprintf('  Relative Power: %.4f\n\n', relative_power);
+        
+        % Plot the filtered signal for the current band
+        figure;
+        plot(t, filtered_signal, 'LineWidth', 1.5);
+        xlabel('Time (seconds)');
+        ylabel('Amplitude');
+        title([band_name ' Band for Detrended EEG Signal ' num2str(i)]);
+        grid on;
+        xlim([0 10]); % Show the first 10 seconds
+
+        % Power Spectral Density (PSD) calculation using pwelch method
+        [psd_vals, psd_freqs] = pwelch(filtered_signal, [], [], [], Fs);
+        
+       % Power Spectral Density (PSD) calculation using pwelch method
+[psd_vals, psd_freqs] = pwelch(filtered_signal, [], [], [], Fs);
+
+% Plot the Power Spectral Density (PSD)
+figure;
+plot(psd_freqs, 10*log10(psd_vals), 'LineWidth', 1.5);
+xlabel('Frequency (Hz)');
+ylabel('Power/Frequency (dB/Hz)');
+title(['Power Spectral Density (PSD) for ' band_name ' Band, Signal ' num2str(i)]);
+grid on;
+xlim([band_freq(1) band_freq(2)]); % Show only the current band frequencies
+
+% Find the maximum PSD value and its corresponding frequency
+[~, max_psd_idx] = max(psd_vals);
+peak_psd_freq = psd_freqs(max_psd_idx); % Peak frequency in the PSD
+
+% Annotate the Peak Frequency and Band Power on the PSD plot
+text(peak_psd_freq, 10*log10(psd_vals(max_psd_idx)), ...
+    sprintf('Peak Freq: %.2f Hz', peak_psd_freq), ...
+    'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'right', ...
+    'FontSize', 10, 'Color', 'red');
+
+text(band_freq(1) + (band_freq(2) - band_freq(1)) * 0.1, ...
+    max(10*log10(psd_vals)), ...
+    sprintf('Band Power: %.4f', band_power), ...
+    'VerticalAlignment', 'top', 'HorizontalAlignment', 'left', ...
+    'FontSize', 10, 'Color', 'black');
+
+
+        
+    end
+end
