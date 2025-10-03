@@ -1,4 +1,5 @@
-ABSTRACT
+ABSTRACT:
+
 Emotion recognition from EEG signals represents a promising frontier in understanding human 
 affective states, with significant implications for mental health diagnostics, human-computer interaction, and the 
 development of adaptive technologies. This research investigates the application of advanced machine learning 
